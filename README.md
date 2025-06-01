@@ -2,6 +2,8 @@
 
 A Neovim plugin that enhances vim-slime with better tmux integration, Telescope-based target selection, and seamless pane switching capabilities.
 
+https://github.com/user-attachments/assets/25c9530f-789d-4363-9f10-c41accefe83c
+
 ## Features
 
 - 🚀 **Enhanced vim-slime integration** - Pre-configured settings with sensible defaults
