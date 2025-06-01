@@ -1,6 +1,5 @@
 local M = {}
 
--- Default configuration
 M.config = {
     target = "tmux",
     default_config = {
@@ -18,12 +17,10 @@ M.config = {
     }
 }
 
--- Setup function for user configuration
 function M.setup(user_config)
     user_config = user_config or {}
     M.config = vim.tbl_deep_extend("force", M.config, user_config)
 
-    -- Configure vim-slime
     vim.g.slime_target = M.config.target
     vim.g.slime_default_config = M.config.default_config
     vim.g.slime_dont_ask_default = M.config.dont_ask_default and 1 or 0
@@ -31,14 +28,12 @@ function M.setup(user_config)
     vim.g.slime_cell_delimiter = M.config.cell_delimiter
     vim.g.slime_paste_file = vim.fn.tempname()
 
-    -- Setup enhanced functionality
     M.setup_functions()
     M.setup_autocmds()
     M.setup_commands()
     M.setup_keymaps()
 end
 
--- Enhanced slime send function with tmux switching
 function M.slime_send_and_switch()
     vim.fn["slime#send_cell"]()
 
@@ -64,7 +59,6 @@ function M.slime_send_and_switch()
     vim.cmd("redraw")
 end
 
--- Telescope-based target picker
 function M.pick_target()
     local has_telescope, pickers = pcall(require, "telescope.pickers")
     if not has_telescope then
@@ -165,17 +159,14 @@ function M.pick_target()
     }):find()
 end
 
--- Send cell without switching
 function M.send_cell_no_switch()
     vim.fn["slime#send_cell"]()
 end
 
--- Setup internal functions
 function M.setup_functions()
     _G.SlimeSendAndSwitch = M.slime_send_and_switch
 end
 
--- Setup autocmds for markdown support
 function M.setup_autocmds()
     vim.api.nvim_create_autocmd("FileType", {
         pattern = "markdown",
@@ -213,14 +204,12 @@ function M.setup_autocmds()
     })
 end
 
--- Setup user commands
 function M.setup_commands()
     vim.api.nvim_create_user_command("SlimePickTarget", M.pick_target, {})
     vim.api.nvim_create_user_command("SlimeSendCellNoSwitch", M.send_cell_no_switch, {})
     vim.api.nvim_create_user_command("SlimeSendAndSwitch", M.slime_send_and_switch, {})
 end
 
--- Setup keymaps
 function M.setup_keymaps()
     local keymaps = M.config.keymaps
 
