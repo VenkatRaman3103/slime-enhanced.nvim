@@ -11,9 +11,10 @@ M.config = {
     cell_delimiter = "# %%",
     keymaps = {
         send = "<leader>ss",
-        send_cell_and_switch = "<leader>ro",
-        send_cell_no_switch = "<leader>rr",
+        send_cell_and_switch = "<leader>so",
+        send_cell_no_switch = "<leader>sr",
         pick_target = "<leader>rt",
+        send_custom = "<leader>sc",
     }
 }
 
@@ -208,6 +209,8 @@ function M.setup_commands()
     vim.api.nvim_create_user_command("SlimePickTarget", M.pick_target, {})
     vim.api.nvim_create_user_command("SlimeSendCellNoSwitch", M.send_cell_no_switch, {})
     vim.api.nvim_create_user_command("SlimeSendAndSwitch", M.slime_send_and_switch, {})
+
+    vim.api.nvim_create_user_command("SlimeSendCustom", M.send_custom_command, {})
 end
 
 function M.setup_keymaps()
@@ -218,6 +221,33 @@ function M.setup_keymaps()
     vim.keymap.set("n", keymaps.send_cell_and_switch, M.slime_send_and_switch, { desc = "Slime Send Cell & Switch" })
     vim.keymap.set("n", keymaps.send_cell_no_switch, M.send_cell_no_switch, { desc = "Slime Send Cell (No Switch)" })
     vim.keymap.set("n", keymaps.pick_target, M.pick_target, { desc = "Slime: Pick Target Pane" })
+
+    vim.keymap.set("n", keymaps.send_custom, M.send_custom_command, {
+        desc = "Slime: Send Custom Command"
+    })
+end
+
+function M.send_custom_command()
+    local cmd = vim.fn.input("Command to run in tmux > ")
+
+    if cmd == nil or cmd == "" then
+        vim.notify("No command entered.", vim.log.levels.WARN)
+        return
+    end
+
+    local config = vim.b.slime_config or vim.g.slime_default_config
+    local target = config.target_pane
+
+    if not target or target == "" then
+        vim.notify("No Slime target pane set.", vim.log.levels.ERROR)
+        return
+    end
+
+    local send_cmd = string.format([[tmux send-keys -t %s "%s" Enter]], target, cmd)
+
+    vim.fn.system(send_cmd)
+
+    vim.notify("Sent to tmux: " .. cmd)
 end
 
 return M
