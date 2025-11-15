@@ -20,24 +20,31 @@ M.config = {
     }
 }
 
-
+-- Send to tmux helper
 local function tmux_send(target, command)
     local send_cmd = string.format([[tmux send-keys -t %s "%s" Enter]], target, command)
     vim.fn.system(send_cmd)
 end
 
+-- FIXED, CLEAN, ROBUST command parser
 local function parse_commands(input)
+    -- No multiple command delimiter: return one string
     if not input:match(";;") then
         return vim.trim(input)
     end
 
+    local parts = vim.split(input, ";;", { trimempty = true })
     local cmds = {}
-    for cmd in string.gmatch(input, "([^;]+)%s*;;?") do
-        table.insert(cmds, vim.trim(cmd))
+
+    for _, p in ipairs(parts) do
+        local trimmed = vim.trim(p)
+        if trimmed ~= "" then
+            table.insert(cmds, trimmed)
+        end
     end
+
     return cmds
 end
-
 
 function M.setup(user_config)
     user_config = user_config or {}
@@ -162,7 +169,7 @@ function M.pick_target()
                                                 socket_name = "default",
                                                 target_pane = target,
                                             }
-                                            vim.notify("Slime target set to: " .. target)
+                                            vim.notify("Slime target set: " .. target)
                                         else
                                             vim.notify("Failed to parse target pane", vim.log.levels.ERROR)
                                         end
