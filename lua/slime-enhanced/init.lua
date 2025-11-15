@@ -1,5 +1,5 @@
 local M = {}
-local last_custom_command = nil
+local last_custom_commands = nil -- can be string or table
 
 M.config = {
     target = "tmux",
@@ -15,10 +15,29 @@ M.config = {
         send_cell_and_switch = "<leader>so",
         send_cell_no_switch = "<leader>sr",
         pick_target = "<leader>rt",
-        send_custom = "<leader>sc", -- run last command or ask first time
-        set_custom = "<leader>sC",  -- force set new command
+        send_custom = "<leader>sc",
+        set_custom = "<leader>sC",
     }
 }
+
+
+local function tmux_send(target, command)
+    local send_cmd = string.format([[tmux send-keys -t %s "%s" Enter]], target, command)
+    vim.fn.system(send_cmd)
+end
+
+local function parse_commands(input)
+    if not input:match(";;") then
+        return vim.trim(input)
+    end
+
+    local cmds = {}
+    for cmd in string.gmatch(input, "([^;]+)%s*;;?") do
+        table.insert(cmds, vim.trim(cmd))
+    end
+    return cmds
+end
+
 
 function M.setup(user_config)
     user_config = user_config or {}
@@ -44,7 +63,6 @@ function M.slime_send_and_switch()
     local target_pane = config.target_pane
 
     local session, window_pane = target_pane:match("([^:]+):?(.*)")
-
     if not window_pane then
         window_pane = session
         session = nil
@@ -52,8 +70,11 @@ function M.slime_send_and_switch()
 
     local switch_cmd
     if session then
-        switch_cmd = string.format("tmux select-window -t %s && tmux select-pane -t %s",
-            target_pane:gsub("%.%d+$", ""), target_pane)
+        switch_cmd = string.format(
+            "tmux select-window -t %s && tmux select-pane -t %s",
+            target_pane:gsub("%.%d+$", ""),
+            target_pane
+        )
     else
         switch_cmd = string.format("tmux select-pane -t %s", target_pane)
     end
@@ -63,8 +84,8 @@ function M.slime_send_and_switch()
 end
 
 function M.pick_target()
-    local has_telescope, pickers = pcall(require, "telescope.pickers")
-    if not has_telescope then
+    local ok, pickers = pcall(require, "telescope.pickers")
+    if not ok then
         vim.notify("Telescope is required for SlimePickTarget", vim.log.levels.ERROR)
         return
     end
@@ -80,63 +101,60 @@ function M.pick_target()
         prompt_position = "top",
     }
 
-    local session_cmd = "tmux list-sessions -F '#S'"
-    local sessions = vim.fn.systemlist(session_cmd)
+    local sessions = vim.fn.systemlist("tmux list-sessions -F '#S'")
 
     pickers.new({}, {
         prompt_title = "",
         prompt_prefix = "enter session > ",
-        finder = finders.new_table({
-            results = sessions
-        }),
+        finder = finders.new_table({ results = sessions }),
         sorter = conf.generic_sorter({}),
         layout_strategy = "horizontal",
         layout_config = layout_config,
+
         attach_mappings = function(prompt_bufnr, map)
             actions.select_default:replace(function()
                 local selection = action_state.get_selected_entry()
                 actions.close(prompt_bufnr)
                 local session = selection[1]
 
-                local win_cmd = string.format("tmux list-windows -t %s -F '#W'", session)
-                local windows = vim.fn.systemlist(win_cmd)
+                local windows = vim.fn.systemlist(
+                    string.format("tmux list-windows -t %s -F '#W'", session)
+                )
 
                 pickers.new({}, {
                     prompt_title = "",
                     prompt_prefix = "enter window > ",
-                    finder = finders.new_table({
-                        results = windows
-                    }),
+                    finder = finders.new_table({ results = windows }),
                     sorter = conf.generic_sorter({}),
                     layout_strategy = "horizontal",
                     layout_config = layout_config,
-                    attach_mappings = function(prompt_bufnr, map)
+
+                    attach_mappings = function(prompt_bufnr2, _)
                         actions.select_default:replace(function()
-                            local selection = action_state.get_selected_entry()
-                            actions.close(prompt_bufnr)
-                            local window = selection[1]
+                            local win_entry = action_state.get_selected_entry()
+                            actions.close(prompt_bufnr2)
+                            local window = win_entry[1]
                             local full_window = string.format("%s:%s", session, window)
 
-                            local pane_cmd = string.format(
-                                "tmux list-panes -t %s -F '#{pane_index}:#{pane_current_command}'",
-                                full_window
+                            local panes = vim.fn.systemlist(
+                                string.format("tmux list-panes -t %s -F '#{pane_index}:#{pane_current_command}'",
+                                    full_window)
                             )
-                            local panes = vim.fn.systemlist(pane_cmd)
 
                             pickers.new({}, {
                                 prompt_title = "",
                                 prompt_prefix = "enter pane > ",
-                                finder = finders.new_table({
-                                    results = panes
-                                }),
+                                finder = finders.new_table({ results = panes }),
                                 sorter = conf.generic_sorter({}),
                                 layout_strategy = "horizontal",
                                 layout_config = layout_config,
-                                attach_mappings = function(prompt_bufnr, map)
+
+                                attach_mappings = function(prompt_bufnr3, _)
                                     actions.select_default:replace(function()
-                                        local selection = action_state.get_selected_entry()
-                                        actions.close(prompt_bufnr)
-                                        local pane_index = selection[1]:match("^(%d+):")
+                                        local pane_entry = action_state.get_selected_entry()
+                                        actions.close(prompt_bufnr3)
+
+                                        local pane_index = pane_entry[1]:match("^(%d+):")
                                         if pane_index then
                                             local target = string.format("%s.%s", full_window, pane_index)
                                             vim.g.slime_default_config.target_pane = target
@@ -150,15 +168,15 @@ function M.pick_target()
                                         end
                                     end)
                                     return true
-                                end,
+                                end
                             }):find()
                         end)
                         return true
-                    end,
+                    end
                 }):find()
             end)
             return true
-        end,
+        end
     }):find()
 end
 
@@ -177,30 +195,27 @@ function M.setup_autocmds()
             vim.b.slime_cell_delimiter = "```"
 
             vim.b.slime_get_cell = function()
-                local pos = vim.api.nvim_win_get_cursor(0)
-                local line = pos[1]
-                local content = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+                local pos = vim.api.nvim_win_get_cursor(0)[1]
+                local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
 
-                local start_line = line
-                while start_line > 1 and not content[start_line]:match("^```%w*%s*$") do
-                    start_line = start_line - 1
+                local start = pos
+                while start > 1 and not lines[start]:match("^```") do
+                    start = start - 1
                 end
 
-                local end_line = line
-                while end_line < #content and not content[end_line]:match("^```%s*$") do
-                    end_line = end_line + 1
+                local finish = pos
+                while finish < #lines and not lines[finish]:match("^```%s*$") do
+                    finish = finish + 1
                 end
 
-                if start_line < end_line then
-                    local lang = content[start_line]:match("^```(%w+)")
-
-                    local code_lines = {}
-                    for i = start_line + 1, end_line - 1 do
-                        table.insert(code_lines, content[i])
+                if start < finish then
+                    local out = {}
+                    for i = start + 1, finish - 1 do
+                        table.insert(out, lines[i])
                     end
-
-                    return table.concat(code_lines, "\n")
+                    return table.concat(out, "\n")
                 end
+
                 return ""
             end
         end
@@ -217,62 +232,58 @@ function M.setup_commands()
 end
 
 function M.setup_keymaps()
-    local keymaps = M.config.keymaps
+    local k = M.config.keymaps
 
-    vim.keymap.set("n", keymaps.send, "<Plug>SlimeSend", { desc = "Slime Send" })
-    vim.keymap.set("x", keymaps.send, "<Plug>SlimeSend", { desc = "Slime Send" })
-    vim.keymap.set("n", keymaps.send_cell_and_switch, M.slime_send_and_switch, { desc = "Slime Send Cell & Switch" })
-    vim.keymap.set("n", keymaps.send_cell_no_switch, M.send_cell_no_switch, { desc = "Slime Send Cell (No Switch)" })
-    vim.keymap.set("n", keymaps.pick_target, M.pick_target, { desc = "Slime: Pick Target Pane" })
+    vim.keymap.set("n", k.send, "<Plug>SlimeSend")
+    vim.keymap.set("x", k.send, "<Plug>SlimeSend")
+    vim.keymap.set("n", k.send_cell_and_switch, M.slime_send_and_switch)
+    vim.keymap.set("n", k.send_cell_no_switch, M.send_cell_no_switch)
+    vim.keymap.set("n", k.pick_target, M.pick_target)
 
-    vim.keymap.set("n", keymaps.send_custom, M.send_custom_command,
-        { desc = "Slime: Send Custom Command (reuse last)" })
-
-    vim.keymap.set("n", keymaps.set_custom, M.set_custom_command,
-        { desc = "Slime: Set New Custom Command" })
+    vim.keymap.set("n", k.send_custom, M.send_custom_command)
+    vim.keymap.set("n", k.set_custom, M.set_custom_command)
 end
 
 function M.send_custom_command()
-    local cmd
+    local cmds = last_custom_commands
 
-    if last_custom_command == nil then
-        -- First time: ask user for command
-        cmd = vim.fn.input("Command to run in tmux > ")
-
-        if cmd == nil or cmd == "" then
+    if cmds == nil then
+        local input = vim.fn.input("Command (or multiple with ';;') > ")
+        if input == nil or input == "" then
             vim.notify("No command entered.", vim.log.levels.WARN)
             return
         end
 
-        last_custom_command = cmd
-    else
-        -- Reuse previously saved command
-        cmd = last_custom_command
-        -- vim.notify("Reusing last command: " .. cmd)
+        cmds = parse_commands(input)
+        last_custom_commands = cmds
     end
 
     local config = vim.b.slime_config or vim.g.slime_default_config
     local target = config.target_pane
 
-    if not target or target == "" then
-        vim.notify("No Slime target pane set.", vim.log.levels.ERROR)
-        return
+    if type(cmds) == "string" then
+        tmux_send(target, cmds)
+    else
+        for _, c in ipairs(cmds) do
+            tmux_send(target, c)
+        end
     end
-
-    local send_cmd = string.format([[tmux send-keys -t %s "%s" Enter]], target, cmd)
-    vim.fn.system(send_cmd)
 end
 
 function M.set_custom_command()
-    local cmd = vim.fn.input("Set new command > ")
-
-    if cmd == nil or cmd == "" then
+    local input = vim.fn.input("Set new command(s) > ")
+    if input == nil or input == "" then
         vim.notify("No command entered.", vim.log.levels.WARN)
         return
     end
 
-    last_custom_command = cmd
-    vim.notify("Custom command saved: " .. cmd)
+    last_custom_commands = parse_commands(input)
+
+    if type(last_custom_commands) == "string" then
+        vim.notify("Saved command: " .. last_custom_commands)
+    else
+        vim.notify("Saved commands: " .. table.concat(last_custom_commands, " | "))
+    end
 end
 
 return M
