@@ -248,7 +248,7 @@ function M.send_custom_command()
     else
         -- Reuse previously saved command
         cmd = last_custom_command
-        vim.notify("Reusing last command: " .. cmd)
+        -- vim.notify("Reusing last command: " .. cmd)
     end
 
     local config = vim.b.slime_config or vim.g.slime_default_config
