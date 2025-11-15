@@ -1,4 +1,5 @@
 local M = {}
+local last_custom_command = nil
 
 M.config = {
     target = "tmux",
@@ -14,7 +15,8 @@ M.config = {
         send_cell_and_switch = "<leader>so",
         send_cell_no_switch = "<leader>sr",
         pick_target = "<leader>rt",
-        send_custom = "<leader>sc",
+        send_custom = "<leader>sc", -- run last command or ask first time
+        set_custom = "<leader>sC",  -- force set new command
     }
 }
 
@@ -211,6 +213,7 @@ function M.setup_commands()
     vim.api.nvim_create_user_command("SlimeSendAndSwitch", M.slime_send_and_switch, {})
 
     vim.api.nvim_create_user_command("SlimeSendCustom", M.send_custom_command, {})
+    vim.api.nvim_create_user_command("SlimeSetCustom", M.set_custom_command, {})
 end
 
 function M.setup_keymaps()
@@ -222,17 +225,30 @@ function M.setup_keymaps()
     vim.keymap.set("n", keymaps.send_cell_no_switch, M.send_cell_no_switch, { desc = "Slime Send Cell (No Switch)" })
     vim.keymap.set("n", keymaps.pick_target, M.pick_target, { desc = "Slime: Pick Target Pane" })
 
-    vim.keymap.set("n", keymaps.send_custom, M.send_custom_command, {
-        desc = "Slime: Send Custom Command"
-    })
+    vim.keymap.set("n", keymaps.send_custom, M.send_custom_command,
+        { desc = "Slime: Send Custom Command (reuse last)" })
+
+    vim.keymap.set("n", keymaps.set_custom, M.set_custom_command,
+        { desc = "Slime: Set New Custom Command" })
 end
 
 function M.send_custom_command()
-    local cmd = vim.fn.input("Command to run in tmux > ")
+    local cmd
 
-    if cmd == nil or cmd == "" then
-        vim.notify("No command entered.", vim.log.levels.WARN)
-        return
+    if last_custom_command == nil then
+        -- First time: ask user for command
+        cmd = vim.fn.input("Command to run in tmux > ")
+
+        if cmd == nil or cmd == "" then
+            vim.notify("No command entered.", vim.log.levels.WARN)
+            return
+        end
+
+        last_custom_command = cmd
+    else
+        -- Reuse previously saved command
+        cmd = last_custom_command
+        vim.notify("Reusing last command: " .. cmd)
     end
 
     local config = vim.b.slime_config or vim.g.slime_default_config
@@ -244,10 +260,19 @@ function M.send_custom_command()
     end
 
     local send_cmd = string.format([[tmux send-keys -t %s "%s" Enter]], target, cmd)
-
     vim.fn.system(send_cmd)
+end
 
-    vim.notify("Sent to tmux: " .. cmd)
+function M.set_custom_command()
+    local cmd = vim.fn.input("Set new command > ")
+
+    if cmd == nil or cmd == "" then
+        vim.notify("No command entered.", vim.log.levels.WARN)
+        return
+    end
+
+    last_custom_command = cmd
+    vim.notify("Custom command saved: " .. cmd)
 end
 
 return M
