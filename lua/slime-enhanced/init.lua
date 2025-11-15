@@ -22,8 +22,11 @@ M.config = {
 
 -- Send to tmux helper
 local function tmux_send(target, command)
-    local send_cmd = string.format([[tmux send-keys -t %s "%s" Enter]], target, command)
-    vim.fn.system(send_cmd)
+    -- split by newline
+    for _, line in ipairs(vim.split(command, "\n", { trimempty = true })) do
+        local send_cmd = string.format([[tmux send-keys -t %s "%s" Enter]], target, line)
+        vim.fn.system(send_cmd)
+    end
 end
 
 -- FIXED, CLEAN, ROBUST command parser
